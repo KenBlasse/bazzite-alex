@@ -1,0 +1,104 @@
+name: Build bazzite-alex
+
+# Baut das Custom Image gegen das jeweils aktuelle ghcr.io/ublue-os/bazzite:stable
+# und pusht nach ghcr.io/kenblasse/bazzite-alex. Dadurch wird `rpm-ostree upgrade`
+# auf dem Desktop wieder ein normaler Remote-Pull — kein lokaler Build,
+# kein `podman image scp`, kein /var/tmp-Verbrauch.
+
+on:
+  schedule:
+    # Sonntags 03:17 UTC. Krumme Minute, damit der Job nicht in der
+    # vollen Stunde mit dem GH-Actions-Ansturm konkurriert.
+    - cron: "17 3 * * 0"
+  push:
+    branches: [main]
+    paths:
+      - Containerfile
+      - .github/workflows/build.yml
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: bazzite-alex
+  IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      # Für die keyless-Signatur mit cosign: der Job tauscht dieses
+      # OIDC-Token gegen ein kurzlebiges Zertifikat bei Fulcio.
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Der GitHub-Runner bringt nur ~21 GB freien Platz mit. Das Basisimage
+      # ist bereits ~10 GB, ROCm-Devel legt mehrere GB obendrauf — ohne das
+      # Freiräumen bricht der Build mit "no space left on device" ab.
+      - name: Speicherplatz freiräumen
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          df -h /
+
+      - name: Image bauen
+        id: build
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: ${{ env.IMAGE_NAME }}
+          # `latest` als beweglicher Tag für rpm-ostree, plus ein
+          # Datums-Tag als Rückfallebene, falls ein Build kaputt ist.
+          tags: latest ${{ github.sha }} ${{ github.run_id }}
+          containerfiles: ./Containerfile
+          oci: true
+
+      # Vor dem Push prüfen, ob das Image überhaupt brauchbar ist. Ein
+      # Build kann "erfolgreich" sein und trotzdem ein Image ohne das
+      # Kernelmodul liefern — dann wäre die Lüftersteuerung still weg.
+      - name: Image verifizieren
+        run: |
+          set -euxo pipefail
+          IMG=${{ steps.build.outputs.image }}:latest
+
+          # Kernelmodul muss vorhanden und von depmod auflösbar sein.
+          KVER=$(podman run --rm "$IMG" rpm -q --qf '%{VERSION}-%{RELEASE}.%{ARCH}' kernel-core)
+          echo "Kernel im Image: $KVER"
+          podman run --rm "$IMG" modinfo -k "$KVER" nct6687
+
+          # HIP-Toolchain: ohne hipblas bricht der llama.cpp-Build auf dem
+          # Desktop später an find_package(hipblas) ab.
+          podman run --rm "$IMG" test -f /usr/lib64/cmake/hipblas/hipblas-config.cmake
+
+          # Die modprobe-Regeln müssen im Image liegen, sonst lädt
+          # nct6687 beim Boot nicht und coolercontrol sieht read-only PWMs.
+          podman run --rm "$IMG" test -f /usr/lib/modules-load.d/99-nct6687d.conf
+          podman run --rm "$IMG" test -f /usr/lib/modprobe.d/99-nct6687d.conf
+
+      - name: An ghcr.io pushen
+        id: push
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build.outputs.image }}
+          tags: ${{ steps.build.outputs.tags }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: cosign installieren
+        uses: sigstore/cosign-installer@v3
+
+      # Keyless-Signatur. Erlaubt es, auf dem Desktop später eine
+      # Signaturprüfung zu aktivieren, statt das Image ungeprüft zu ziehen.
+      - name: Image signieren
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes \
+            ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}
