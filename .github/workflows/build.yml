@@ -100,9 +100,19 @@ jobs:
 
       # Keyless-Signatur. Erlaubt es, auf dem Desktop später eine
       # Signaturprüfung zu aktivieren, statt das Image ungeprüft zu ziehen.
+      #
+      # Der Registry-Login muss hier erneut passieren: push-to-registry
+      # authentifiziert sich intern selbst und hinterlässt cosign keine
+      # nutzbare Session — sonst bricht das Hochladen der Signatur mit
+      # "UNAUTHORIZED: unauthenticated" ab.
+      - name: An ghcr.io anmelden
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Image signieren
-        env:
-          COSIGN_EXPERIMENTAL: "true"
         run: |
           cosign sign --yes \
             ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}
