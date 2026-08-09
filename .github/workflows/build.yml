@@ -23,7 +23,11 @@ concurrency:
 
 env:
   IMAGE_NAME: bazzite-alex
-  IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
+  # Kleingeschrieben, fest eingetragen: `github.repository_owner` liefert die
+  # Original-Schreibweise (KenBlasse), Registry-Pfade müssen aber lowercase
+  # sein. Sonst deutet podman den Pfad als unbekannten Transport und der
+  # Push bricht ab.
+  IMAGE_REGISTRY: ghcr.io/kenblasse
 
 jobs:
   build:
@@ -50,7 +54,7 @@ jobs:
 
       - name: Image bauen
         id: build
-        uses: redhat-actions/buildah-build@v2
+        uses: redhat-actions/buildah-build@v3
         with:
           image: ${{ env.IMAGE_NAME }}
           # `latest` als beweglicher Tag für rpm-ostree, plus ein
@@ -83,7 +87,7 @@ jobs:
 
       - name: An ghcr.io pushen
         id: push
-        uses: redhat-actions/push-to-registry@v2
+        uses: redhat-actions/push-to-registry@v3
         with:
           image: ${{ steps.build.outputs.image }}
           tags: ${{ steps.build.outputs.tags }}
