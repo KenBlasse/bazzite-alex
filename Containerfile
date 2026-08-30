@@ -41,7 +41,8 @@ RUN set -euxo pipefail; \
     # von Make stillschweigend ignoriert und fällt auf uname -r zurück.
     make -C /tmp/nct6687d KVER="${KVER}"; \
     \
-    install -Dm644 "/tmp/nct6687d/${KVER}/nct6687.ko" \
+    # Kbuild baut mit M=$(CURDIR) direkt ins Repo-Root, kein ${KVER}-Unterordner.
+    install -Dm644 "/tmp/nct6687d/nct6687.ko" \
         "/usr/lib/modules/${KVER}/extra/nct6687.ko"; \
     depmod -a "${KVER}"; \
     \
