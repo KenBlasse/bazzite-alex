@@ -35,9 +35,11 @@ RUN set -euxo pipefail; \
         gcc make git kernel-devel-"${KVER}"; \
     \
     git clone --depth 1 https://github.com/Fred78290/nct6687d.git /tmp/nct6687d; \
-    # kver überschreiben ist zwingend: im Container liefert `uname -r`
-    # den Kernel des BAU-Hosts, nicht den des Images.
-    make -C /tmp/nct6687d kver="${KVER}"; \
+    # KVER überschreiben ist zwingend: im Container liefert `uname -r`
+    # den Kernel des BAU-Hosts, nicht den des Images. Großschreibung ist
+    # bindend — das Makefile kennt nur `KVER`, ein kleines `kver` wird
+    # von Make stillschweigend ignoriert und fällt auf uname -r zurück.
+    make -C /tmp/nct6687d KVER="${KVER}"; \
     \
     install -Dm644 "/tmp/nct6687d/${KVER}/nct6687.ko" \
         "/usr/lib/modules/${KVER}/extra/nct6687.ko"; \
