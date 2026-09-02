@@ -8,14 +8,19 @@ FROM ghcr.io/ublue-os/bazzite:stable
 # Commit lokale Layer, die /var/tmp füllen.
 #
 # Bereinigt gegenüber der alten Layer-Liste:
-#   docker, nodejs, npm, grub2-efi-modules  → waren gar nicht installiert.
-#                                             node liefert `nodejs24` aus dem
+#   docker, grub2-efi-modules               → waren gar nicht installiert.
+#   nodejs, npm                             → node liefert `nodejs24` aus dem
 #                                             Basisimage (/usr/bin/node-24);
 #                                             als Paketmanager dient pnpm.
-#                                             `npm` als Kommando fehlt dadurch
-#                                             — bei Bedarf nachziehen.
-#   ollama                                  → 941 MB tot; auf :11434 antwortet
-#                                             der Podman-Container
+#                                             `nodejs22-npm` unten liefert ein
+#                                             eigenständiges npm-Binary dazu —
+#                                             manche CLI-Installer (Ollamas
+#                                             `ollama launch <tool>`) rufen
+#                                             hart `npm`, nicht `pnpm`, auf.
+#   ollama                                  → 941 MB tot; läuft seit
+#                                             2026-09-02 nativ (ollama.service,
+#                                             /usr/local/bin/ollama), nicht
+#                                             mehr als Podman-Container.
 #   warp-terminal, dpkg                     → nicht mehr benötigt
 # ---------------------------------------------------------------------------
 
@@ -124,6 +129,16 @@ RUN dnf install -y --setopt=install_weak_deps=False \
         gcc-c++ \
     && dnf clean all
 
-# --- 4. Aufräumen ----------------------------------------------------------
+# --- 4. npm -----------------------------------------------------------------
+# node liefert nur `nodejs24` (/usr/bin/node-24), kein eigenständiges npm —
+# als Paketmanager dient sonst pnpm. Manche CLI-Installer rufen aber hart
+# `npm`, nicht `pnpm` (z.B. Ollamas `ollama launch <tool>`, das qwen/claude
+# über einen npm-basierten Installer nachzieht). nodejs22-npm liefert ein
+# eigenständiges npm-Binary dazu, ohne node24 als Standard zu verdrängen.
+RUN dnf install -y --setopt=install_weak_deps=False \
+        nodejs22-npm \
+    && dnf clean all
+
+# --- 5. Aufräumen ----------------------------------------------------------
 RUN rm -rf /var/log/* /var/cache/* /tmp/* && \
     ostree container commit
