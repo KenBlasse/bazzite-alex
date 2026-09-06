@@ -139,6 +139,27 @@ RUN dnf install -y --setopt=install_weak_deps=False \
         nodejs22-npm \
     && dnf clean all
 
+# --- 4b. node24-full-i18n: Fix für den Qwen-Code-SIGSEGV -------------------
+# Bazzite liefert nodejs24 als "small-icu"-Build ohne ICU-Laufzeitdaten.
+# new Intl.Segmenter().segment() dereferenziert dort einen Null-Pointer in
+# V8 (nativer SIGSEGV, nicht in JS abfangbar) — nodejs/node#51752, seit
+# Feb 2024 offen, kein Upstream-Fix in Sicht. Qwen Code ruft genau das auf
+# und crasht deshalb zuverlässig unter nodejs24.
+#
+# Ein Wechsel auf node22 behebt es NICHT zuverlässig (nur mit Wrapper
+# getestet, nie sauber verifiziert) — siehe ~/.local/bin/qwen22, der als
+# Workaround gilt aber nicht bestätigt fehlerfrei lief.
+#
+# Der eigentliche Fix ist eine Node-Variante mit vollen ICU-Daten statt
+# eines Node-Versionswechsels: nodejs24-full-i18n liefert dasselbe
+# /usr/bin/node-24-Binary, aber mit ICU-Daten zur Laufzeit → icu_small=false,
+# Intl.Segmenter funktioniert ohne Crash. `dnf swap` statt `install`, weil
+# beide Pakete dieselbe Datei installieren und sich sonst als Fileconflict
+# gegenseitig blockieren.
+RUN dnf swap -y --setopt=install_weak_deps=False \
+        nodejs24 nodejs24-full-i18n \
+    && dnf clean all
+
 # --- 5. Aufräumen ----------------------------------------------------------
 RUN rm -rf /var/log/* /var/cache/* /tmp/* && \
     ostree container commit
