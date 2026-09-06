@@ -139,7 +139,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
         nodejs22-npm \
     && dnf clean all
 
-# --- 4b. node24-full-i18n: Fix für den Qwen-Code-SIGSEGV -------------------
+# --- 4b. nodejs24-full-i18n: Fix für den Qwen-Code-SIGSEGV -----------------
 # Bazzite liefert nodejs24 als "small-icu"-Build ohne ICU-Laufzeitdaten.
 # new Intl.Segmenter().segment() dereferenziert dort einen Null-Pointer in
 # V8 (nativer SIGSEGV, nicht in JS abfangbar) — nodejs/node#51752, seit
@@ -147,17 +147,20 @@ RUN dnf install -y --setopt=install_weak_deps=False \
 # und crasht deshalb zuverlässig unter nodejs24.
 #
 # Ein Wechsel auf node22 behebt es NICHT zuverlässig (nur mit Wrapper
-# getestet, nie sauber verifiziert) — siehe ~/.local/bin/qwen22, der als
-# Workaround gilt aber nicht bestätigt fehlerfrei lief.
+# getestet, nie funktioniert) — der `qwen22`-Workaround wurde deshalb
+# wieder entfernt.
 #
-# Der eigentliche Fix ist eine Node-Variante mit vollen ICU-Daten statt
-# eines Node-Versionswechsels: nodejs24-full-i18n liefert dasselbe
-# /usr/bin/node-24-Binary, aber mit ICU-Daten zur Laufzeit → icu_small=false,
-# Intl.Segmenter funktioniert ohne Crash. `dnf swap` statt `install`, weil
-# beide Pakete dieselbe Datei installieren und sich sonst als Fileconflict
-# gegenseitig blockieren.
-RUN dnf swap -y --setopt=install_weak_deps=False \
-        nodejs24 nodejs24-full-i18n \
+# nodejs24-full-i18n ist KEIN Ersatzpaket für nodejs24 (erster Versuch mit
+# `dnf swap` schlug fehl: "conflicting requests", weil nodejs24-full-i18n
+# selbst exakt-versioniert `nodejs24` als Abhängigkeit zurückverlangt).
+# Es ist ein reines Zusatzpaket, das nur eine Datei liefert:
+# /usr/share/node-24/icudata/icudt78l.dat. Fedoras nodejs24 ist mit
+# `--with-icu-default-data-dir` gebaut und lädt ICU-Daten aus genau diesem
+# Pfad automatisch nach, sobald sie vorhanden sind — kein ENV-Var nötig,
+# kein Rebuild, `/usr/bin/node-24` bleibt unverändert. Deshalb `install`,
+# nicht `swap`.
+RUN dnf install -y --setopt=install_weak_deps=False \
+        nodejs24-full-i18n \
     && dnf clean all
 
 # --- 5. Aufräumen ----------------------------------------------------------
