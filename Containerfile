@@ -170,7 +170,8 @@ RUN dnf install -y --setopt=install_weak_deps=False \
 # Zwei Tarballs (so wie install.sh selbst vorgeht): das Basis-Tarball
 # (ollama-linux-amd64.tar.zst) enthält bin/ollama + lib/ollama, das ROCm-
 # Tarball enthält NUR lib/ollama/rocm_v7_2/* und wird darüber entpackt.
-# Extraktion direkt nach /usr/local (tar folgt dem Symlink, install -D nicht).
+# /usr/local ist ein Symlink nach /var/usrlocal — Zielverzeichnis anlegen, dann
+# nach /usr/local entpacken (tar loest den Symlink auf).
 #
 # Binary nach /usr/local/bin — konsistent mit der bestehenden Host-Unit
 # /etc/systemd/system/ollama.service (rw, hat Vorrang vor der Image-Unit und
@@ -180,7 +181,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
 RUN set -euxo pipefail; \
     curl -fsSL -o /tmp/ollama-base.tar.zst https://ollama.com/download/ollama-linux-amd64.tar.zst; \
     curl -fsSL -o /tmp/ollama-rocm.tar.zst https://ollama.com/download/ollama-linux-amd64-rocm.tar.zst; \
-    mkdir -p /usr/local; \
+    mkdir -p /var/usrlocal; \
     tar --zstd -xf /tmp/ollama-base.tar.zst -C /usr/local; \
     tar --zstd -xf /tmp/ollama-rocm.tar.zst -C /usr/local; \
     useradd -r -M -s /usr/sbin/nologin ollama 2>/dev/null || true; \
