@@ -175,12 +175,14 @@ RUN dnf install -y --setopt=install_weak_deps=False \
 # setzt OLLAMA_MODELS=/var/mnt/Linux_NVME/ollama/models). Modelle auf der
 # NVME bleiben unangetastet. User ollama muss existieren, sonst startet der
 # Service nicht.
+# install OHNE -D: im ostree-Buildcontainer ist /usr/local ein Symlink,
+# install -D bricht mit "cannot create directory '/usr/local': File exists" ab.
 RUN set -euxo pipefail; \
     curl -fsSL -o /tmp/ollama.tar.zst https://ollama.com/download/ollama-linux-amd64-rocm.tar.zst; \
     tar --zstd -xf /tmp/ollama.tar.zst -C /tmp; \
-    install -Dm755 /tmp/ollama/bin/ollama /usr/local/bin/ollama; \
+    install -m755 /tmp/ollama/bin/ollama /usr/local/bin/ollama; \
     cp -a /tmp/ollama/lib/ollama /usr/lib/ollama; \
-    install -Dm644 /tmp/ollama/lib/systemd/system/ollama.service /usr/lib/systemd/system/ollama.service; \
+    install -m644 /tmp/ollama/lib/systemd/system/ollama.service /usr/lib/systemd/system/ollama.service; \
     useradd -r -M -s /usr/sbin/nologin ollama 2>/dev/null || true; \
     systemctl enable ollama.service; \
     rm -rf /tmp/ollama /tmp/ollama.tar.zst
