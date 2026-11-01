@@ -180,6 +180,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
 RUN set -euxo pipefail; \
     curl -fsSL -o /tmp/ollama-base.tar.zst https://ollama.com/download/ollama-linux-amd64.tar.zst; \
     curl -fsSL -o /tmp/ollama-rocm.tar.zst https://ollama.com/download/ollama-linux-amd64-rocm.tar.zst; \
+    mkdir -p /usr/local; \
     tar --zstd -xf /tmp/ollama-base.tar.zst -C /usr/local; \
     tar --zstd -xf /tmp/ollama-rocm.tar.zst -C /usr/local; \
     useradd -r -M -s /usr/sbin/nologin ollama 2>/dev/null || true; \
