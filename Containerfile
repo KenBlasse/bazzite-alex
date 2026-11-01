@@ -163,29 +163,26 @@ RUN dnf install -y --setopt=install_weak_deps=False \
     && dnf clean all
 
 # --- 4c. Ollama nativ (ROCm-Build) -------------------------------------------
-# Fest im Image statt manuellem Binary-Tausch: auf dem immutable Host ist
-# /usr read-only (außer /usr/local) — das curl-install.sh kommt damit nicht
-# weit. Im Image-Build ist /usr noch schreibbar und wird committed.
+# Fest im Image statt manuellem Binary-Tausch. WICHTIG: nach /usr entpacken,
+# NICHT nach /usr/local — /usr/local ist ein Symlink nach /var/usrlocal, und
+# /var ist persistent: Image-Content landet dort nie im Deployment (alte
+# manuell installierte Binary würde ewig shadowen).
 #
 # Zwei Tarballs (so wie install.sh selbst vorgeht): das Basis-Tarball
 # (ollama-linux-amd64.tar.zst) enthält bin/ollama + lib/ollama, das ROCm-
 # Tarball enthält NUR lib/ollama/rocm_v7_2/* und wird darüber entpackt.
-# /usr/local ist ein Symlink nach /var/usrlocal — Zielverzeichnis anlegen, dann
-# nach /usr/local entpacken (tar loest den Symlink auf).
 #
-# Binary nach /usr/local/bin — konsistent mit der bestehenden Host-Unit
-# /etc/systemd/system/ollama.service (rw, hat Vorrang vor der Image-Unit und
-# setzt OLLAMA_MODELS=/var/mnt/Linux_NVME/ollama/models). Modelle auf der
-# NVME bleiben unangetastet. User ollama muss existieren, sonst startet der
-# Service nicht.
+# Host-Unit /etc/systemd/system/ollama.service (rw, hat Vorrang, setzt
+# OLLAMA_MODELS=/var/mnt/Linux_NVME/ollama/models) muss auf ExecStart=
+# /usr/bin/ollama serve zeigen — die alte /var/usrlocal/bin/ollama muss
+# auf dem Host entfernt werden. Modelle auf der NVME bleiben unangetastet.
 RUN set -euxo pipefail; \
     curl -fsSL -o /tmp/ollama-base.tar.zst https://ollama.com/download/ollama-linux-amd64.tar.zst; \
     curl -fsSL -o /tmp/ollama-rocm.tar.zst https://ollama.com/download/ollama-linux-amd64-rocm.tar.zst; \
-    mkdir -p /var/usrlocal; \
-    tar --zstd -xf /tmp/ollama-base.tar.zst -C /usr/local; \
-    tar --zstd -xf /tmp/ollama-rocm.tar.zst -C /usr/local; \
+    tar --zstd -xf /tmp/ollama-base.tar.zst -C /usr; \
+    tar --zstd -xf /tmp/ollama-rocm.tar.zst -C /usr; \
     useradd -r -M -s /usr/sbin/nologin ollama 2>/dev/null || true; \
-    printf '[Unit]\nDescription=Ollama Service\nAfter=network-online.target\n\n[Service]\nExecStart=/usr/local/bin/ollama serve\nUser=ollama\nGroup=ollama\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=default.target\n' \
+    printf '[Unit]\nDescription=Ollama Service\nAfter=network-online.target\n\n[Service]\nExecStart=/usr/bin/ollama serve\nUser=ollama\nGroup=ollama\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=default.target\n' \
         > /usr/lib/systemd/system/ollama.service; \
     systemctl enable ollama.service; \
     rm -f /tmp/ollama-base.tar.zst /tmp/ollama-rocm.tar.zst
