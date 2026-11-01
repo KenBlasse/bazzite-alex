@@ -17,10 +17,9 @@ FROM ghcr.io/ublue-os/bazzite:stable
 #                                             manche CLI-Installer (Ollamas
 #                                             `ollama launch <tool>`) rufen
 #                                             hart `npm`, nicht `pnpm`, auf.
-#   ollama                                  → 941 MB tot; läuft seit
-#                                             2026-09-02 nativ (ollama.service,
-#                                             /usr/local/bin/ollama), nicht
-#                                             mehr als Podman-Container.
+#   ollama                                  → 941 MB tot als Layer-Paket; läuft
+#                                             stattdessen nativ via systemd,
+#                                             fest im Image eingebaut (siehe 4c).
 #   warp-terminal, dpkg                     → nicht mehr benötigt
 # ---------------------------------------------------------------------------
 
@@ -162,6 +161,29 @@ RUN dnf install -y --setopt=install_weak_deps=False \
 RUN dnf install -y --setopt=install_weak_deps=False \
         nodejs24-full-i18n \
     && dnf clean all
+
+# --- 4c. Ollama nativ (ROCm-Build) -------------------------------------------
+# Fest im Image statt manuellem Binary-Tausch: auf dem immutable Host ist
+# /usr read-only (außer /usr/local) — das curl-install.sh kommt damit nicht
+# weit. Im Image-Build ist /usr noch schreibbar und wird committed.
+#
+# ROCm-Tarball statt dnf-Paket: das Paket wäre der CUDA-Build. RX 7800 XT
+# ist gfx1101 und wird von ROCm offiziell unterstützt.
+#
+# Binary nach /usr/local/bin — konsistent mit der bestehenden Host-Unit
+# /etc/systemd/system/ollama.service (rw, hat Vorrang vor der Image-Unit und
+# setzt OLLAMA_MODELS=/var/mnt/Linux_NVME/ollama/models). Modelle auf der
+# NVME bleiben unangetastet. User ollama muss existieren, sonst startet der
+# Service nicht.
+RUN set -euxo pipefail; \
+    curl -fsSL -o /tmp/ollama.tar.zst https://ollama.com/download/ollama-linux-amd64-rocm.tar.zst; \
+    tar --zstd -xf /tmp/ollama.tar.zst -C /tmp; \
+    install -Dm755 /tmp/ollama/bin/ollama /usr/local/bin/ollama; \
+    cp -a /tmp/ollama/lib/ollama /usr/lib/ollama; \
+    install -Dm644 /tmp/ollama/lib/systemd/system/ollama.service /usr/lib/systemd/system/ollama.service; \
+    useradd -r -M -s /usr/sbin/nologin ollama 2>/dev/null || true; \
+    systemctl enable ollama.service; \
+    rm -rf /tmp/ollama /tmp/ollama.tar.zst
 
 # --- 5. Aufräumen ----------------------------------------------------------
 RUN rm -rf /var/log/* /var/cache/* /tmp/* && \
